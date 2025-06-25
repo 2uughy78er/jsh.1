@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>by.정승환</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; background: #222; color: #fff; }
+    #gameArea { position: relative; width: 100%; height: 100%; background: linear-gradient(to top, #444, #222); overflow: hidden; }
+
+    .player {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      bottom: 100px;
+      background: red;
+      border-radius: 8px;
+      transition: bottom 0.1s linear;
+      will-change: transform;
+      user-select: none;
+    }
+    #player2 { background: blue; }
+
+    #health1, #health2 {
+      position: absolute;
+      top: 10px;
+      height: 20px;
+      background: green;
+      width: 150px;
+      border-radius: 10px;
+    }
+    #health1 { left: 10px; }
+    #health2 { right: 10px; }
+
+    #roundInfo {
+      position: absolute;
+      top: 40px;
+      width: 100%;
+      text-align: center;
+      font-size: 20px;
+      font-weight: bold;
+      user-select: none;
+    }
+
+    .controls {
+      position: absolute;
+      bottom: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      max-width: 250px;
+      user-select: none;
+    }
+    .controls.left {
+      left: 10px;
+      flex-direction: row;
+      flex-wrap: wrap;
+      max-width: 250px;
+    }
+    .controls.right {
+      right: 10px;
+      flex-direction: row;
+      flex-wrap: wrap;
+      max-width: 250px;
+    }
+    .btn {
+      padding: 10px;
+      background: #555;
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-weight: bold;
+      font-size: 13px;
+      width: 70px;
+      user-select: none;
+      touch-action: manipulation;
+    }
+    .btn.disabled {
+      background: #888;
+      cursor: not-allowed;
+    }
+
+    .particle {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: yellow;
+      border-radius: 50%;
+      animation: explode 0.4s ease-out forwards;
+      pointer-events: none;
+    }
+    @keyframes explode {
+      0% { transform: scale(0.5); opacity: 1; }
+      100% { transform: scale(2); opacity: 0; }
+    }
+
+    .afterimage {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      background: inherit;
+      opacity: 0.5;
+      border-radius: 5px;
+      pointer-events: none;
+      filter: blur(2px);
+      animation: fadeOut 0.3s forwards;
+      user-select: none;
+    }
+    @keyframes fadeOut {
+      to { opacity: 0; transform: translateX(20px); }
+    }
+
+    .projectile {
+      position: absolute;
+      width: 15px;
+      height: 15px;
+      background: yellow;
+      border-radius: 50%;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .ultimateRange {
+      position: absolute;
+      width: 120px;
+      height: 60px;
+      background: rgba(255, 0, 0, 0.3);
+      border-radius: 12px;
+      pointer-events: none;
+      user-select: none;
+      animation: fadeOutUltimate 0.6s forwards;
+    }
+    @keyframes fadeOutUltimate {
+      to { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="gameArea">
+    <div id="player1" class="player" style="left: 100px;"></div>
+    <div id="player2" class="player" style="left: calc(100% - 150px); background: blue;"></div>
+
+    <div id="health1"></div>
+    <div id="health2"></div>
+
+    <div id="roundInfo">라운드: 1 | P1: 0승 - P2: 0승</div>
+
+    <!-- Player 1 Controls -->
+    <div class="controls left" style="flex-wrap: wrap;">
+      <button class="btn" onpointerdown="startMove('p1', -1)" onpointerup="stopMove('p1')" onpointercancel="stopMove('p1')">← 왼쪽</button>
+      <button class="btn" onpointerdown="startMove('p1', 1)" onpointerup="stopMove('p1')" onpointercancel="stopMove('p1')">→ 오른쪽</button>
+      <button class="btn" onclick="jump('p1')">점프</button>
+      <button class="btn" onclick="dash('p1')">대시</button>
+      <button class="btn" id="atk1" onclick="attack('p1')">공격</button>
+      <button class="btn" id="ranged1" onclick="rangedAttack('p1')">원거리</button>
+      <button class="btn" id="ulti1" onclick="ultimate('p1')">궁극기</button>
+      <button class="btn" id="counter1" onclick="counter('p1')">반격</button>
+    </div>
+
+    <!-- Player 2 Controls -->
+    <div class="controls right" style="flex-wrap: wrap;">
+      <button class="btn" onpointerdown="startMove('p2', -1)" onpointerup="stopMove('p2')" onpointercancel="stopMove('p2')">← 왼쪽</button>
+      <button class="btn" onpointerdown="startMove('p2', 1)" onpointerup="stopMove('p2')" onpointercancel="stopMove('p2')">→ 오른쪽</button>
+      <button class="btn" onclick="jump('p2')">점프</button>
+      <button class="btn" onclick="dash('p2')">대시</button>
+      <button class="btn" id="atk2" onclick="attack('p2')">공격</button>
+      <button class="btn" id="ranged2" onclick="rangedAttack('p2')">원거리</button>
+      <button class="btn" id="ulti2" onclick="ultimate('p2')">궁극기</button>
+      <button class="btn" id="counter2" onclick="counter('p2')">반격</button>
+    </div>
+  </div>
+
+  <script>
+    const gameArea = document.getElementById('gameArea');
+    const p1 = document.getElementById('player1');
+    const p2 = document.getElementById('player2');
+    const healthBar1 = document.getElementById('health1');
+    const healthBar2 = document.getElementById('health2');
+    const roundInfo = document.getElementById('roundInfo');
+
+    const atkBtn1 = document.getElementById('atk1');
+    const atkBtn2 = document.getElementById('atk2');
+    const rangedBtn1 = document.getElementById('ranged1');
+    const rangedBtn2 = document.getElementById('ranged2');
+    const ultiBtn1 = document.getElementById('ulti1');
+    const ultiBtn2 = document.getElementById('ulti2');
+    const counterBtn1 = document.getElementById('counter1');
+    const counterBtn2 = document.getElementById('counter2');
+
+    // 체력 최대값 150으로 조정
+    let hp1 = 150;
+    let hp2 = 150;
+    let wins1 = 0;
+    let wins2 = 0;
+    let round = 1;
+    let isFighting = true;
+
+    const counterState = { p1: false, p2: false };
+
+    const state = {
+      p1: { x: 100, y: 100, vy: 0, jumpCount: 0, isGround: true, moveDir: 0 },
+      p2: { x: window.innerWidth - 150, y: 100, vy: 0, jumpCount: 0, isGround: true, moveDir: 0 },
+    };
+
+    const gravity = 0.8;
+    const moveSpeed = 15;
+    const dashSpeed = 60;
+    const groundY = 100;
+    const maxX = window.innerWidth - 50;
+    const minX = 0;
+
+    // 투사체 속도를 느리게 (기존 20 -> 12)
+    const projectileSpeed = 12;
+
+    function updateUI() {
+      healthBar1.style.width = hp1 + 'px';
+      healthBar2.style.width = hp2 + 'px';
+      roundInfo.innerText = `라운드: ${round} | P1: ${wins1}승 - P2: ${wins2}승`;
+
+      p1.style.left = state.p1.x + 'px';
+      p1.style.bottom = state.p1.y + 'px';
+      p2.style.left = state.p2.x + 'px';
+      p2.style.bottom = state.p2.y + 'px';
+    }
+
+    function startMove(player, dir) {
+      if (!isFighting) return;
+      state[player].moveDir = dir;
+    }
+    function stopMove(player) {
+      state[player].moveDir = 0;
+    }
+
+    function jump(player) {
+      if (!isFighting) return;
+      const s = state[player];
+      if (s.jumpCount >= 2) return;
+      s.vy = 18;
+      s.jumpCount++;
+      s.isGround = false;
+      updateUI();
+    }
+
+    function dash(player) {
+      if (!isFighting) return;
+      const s = state[player];
+      const dir = player === 'p1' ? 1 : -1;
+      createAfterimage(player);
+      s.x += dir * dashSpeed;
+      if (s.x < minX) s.x = minX;
+      if (s.x > maxX) s.x = maxX;
+      updateUI();
+    }
+    function createAfterimage(player) {
+      const el = player === 'p1' ? p1 : p2;
+      const afterimage = document.createElement('div');
+      afterimage.className = 'afterimage';
+      afterimage.style.left = el.style.left;
+      afterimage.style.bottom = el.style.bottom;
+      afterimage.style.background = getComputedStyle(el).backgroundColor;
+      gameArea.appendChild(afterimage);
+      setTimeout(() => {
+        gameArea.removeChild(afterimage);
+      }, 300);
+    }
+
+    function attack(player) {
+      if (!isFighting) return;
+      const btn = player === 'p1' ? atkBtn1 : atkBtn2;
+      if (btn.classList.contains('disabled')) return;
+
+      startCooldown(btn, 1000);
+
+      const attackerEl = player === 'p1' ? p1 : p2;
+      const targetEl = player === 'p1' ? p2 : p1;
+      const attackerX = attackerEl.getBoundingClientRect().x;
+      const targetX = targetEl.getBoundingClientRect().x;
+      const distance = Math.abs(attackerX - targetX);
+
+      const opponent = player === 'p1' ? 'p2' : 'p1';
+      if (counterState[opponent]) {
+        showParticle(attackerEl);
+        if (player === 'p1') hp1 -= 20;
+        else hp2 -= 20;
+        counterState[opponent] = false;
+        updateUI();
+        return;
+      }
+
+      if (distance < 80) {
+        showParticle(targetEl);
+        if (player === 'p1') {
+          hp2 -= 10;
+          if (hp2 <= 0) endRound('p1');
+        } else {
+          hp1 -= 10;
+          if (hp1 <= 0) endRound('p2');
+        }
+        updateUI();
+      }
+    }
+
+    function rangedAttack(player) {
+      if (!isFighting) return;
+      const btn = player === 'p1' ? rangedBtn1 : rangedBtn2;
+      if (btn.classList.contains('disabled')) return;
+
+      startCooldown(btn, 5000);
+
+      const startX = state[player].x + (player === 'p1' ? 50 : -15);
+      const startY = state[player].y + 25;
+      const dir = player === 'p1' ? 1 : -1;
+
+      const projectile = document.createElement('div');
+      projectile.className = 'projectile';
+      projectile.style.left = startX + 'px';
+      projectile.style.bottom = startY + 'px';
+      gameArea.appendChild(projectile);
+
+      let posX = startX;
+
+      const interval = setInterval(() => {
+        posX += dir * projectileSpeed;  // 느리게 변경
+        projectile.style.left = posX + 'px';
+
+        const target = player === 'p1' ? p2 : p1;
+        const targetRect = target.getBoundingClientRect();
+        const projRect = projectile.getBoundingClientRect();
+
+        if (
+          projRect.left + projRect.width > targetRect.left &&
+          projRect.left < targetRect.right &&
+          projRect.top < targetRect.bottom &&
+          projRect.bottom > targetRect.top
+        ) {
+          const opponent = player === 'p1' ? 'p2' : 'p1';
+          if (counterState[opponent]) {
+            showParticle(player === 'p1' ? p1 : p2);
+            if (player === 'p1') hp1 -= 20;
+            else hp2 -= 20;
+            counterState[opponent] = false;
+            updateUI();
+            clearInterval(interval);
+            gameArea.removeChild(projectile);
+            return;
+          }
+
+          showParticle(target);
+          if (player === 'p1') {
+            hp2 -= 15;
+            if (hp2 <= 0) endRound('p1');
+          } else {
+            hp1 -= 15;
+            if (hp1 <= 0) endRound('p2');
+          }
+          updateUI();
+          clearInterval(interval);
+          gameArea.removeChild(projectile);
+        }
+
+        if (posX < minX || posX > maxX + 50) {
+          clearInterval(interval);
+          if (projectile.parentNode) gameArea.removeChild(projectile);
+        }
+      }, 30);
+    }
+
+    function ultimate(player) {
+      if (!isFighting) return;
+      const btn = player === 'p1' ? ultiBtn1 : ultiBtn2;
+      if (btn.classList.contains('disabled')) return;
+
+      startCooldown(btn, 15000);
+
+      const attacker = player === 'p1' ? p1 : p2;
+      const target = player === 'p1' ? p2 : p1;
+
+      const range = document.createElement('div');
+      range.className = 'ultimateRange';
+      gameArea.appendChild(range);
+
+      const attackerX = state[player].x;
+      const attackerY = state[player].y;
+
+      if (player === 'p1') {
+        range.style.left = (attackerX + 50) + 'px';
+      } else {
+        range.style.left = (attackerX - 120) + 'px';
+      }
+      range.style.bottom = (attackerY + 20) + 'px';
+
+      setTimeout(() => {
+        if (range.parentNode) gameArea.removeChild(range);
+
+        const attackerRect = attacker.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+
+        const rangeLeft = player === 'p1' ? attackerRect.right : attackerRect.left - 120;
+        const rangeRight = player === 'p1' ? attackerRect.right + 120 : attackerRect.left;
+
+        const hit =
+          !(targetRect.right < rangeLeft || targetRect.left > rangeRight) &&
+          Math.abs(targetRect.bottom - attackerRect.bottom) < 60;
+
+        const opponent = player === 'p1' ? 'p2' : 'p1';
+        if (hit) {
+          if (counterState[opponent]) {
+            showParticle(player === 'p1' ? p1 : p2);
+            if (player === 'p1') hp1 -= 20;
+            else hp2 -= 20;
+            counterState[opponent] = false;
+            updateUI();
+            return;
+          }
+
+          if (player === 'p1') {
+            hp2 -= 30;
+            if (hp2 <= 0) endRound('p1');
+          } else {
+            hp1 -= 30;
+            if (hp1 <= 0) endRound('p2');
+          }
+          showParticle(target);
+          updateUI();
+        }
+      }, 300);
+    }
+
+    function counter(player) {
+      if (!isFighting) return;
+      const btn = player === 'p1' ? counterBtn1 : counterBtn2;
+      if (btn.classList.contains('disabled')) return;
+
+      btn.classList.add('disabled');
+      counterState[player] = true;
+      setTimeout(() => {
+        counterState[player] = false;
+        btn.classList.remove('disabled');
+      }, 500);
+    }
+
+    function startCooldown(btn, ms) {
+      let remaining = ms / 1000;
+      btn.classList.add('disabled');
+      btn.innerText = `쿨 ${remaining.toFixed(1)}`;
+
+      const interval = setInterval(() => {
+        remaining -= 0.1;
+        if (remaining <= 0) {
+          btn.innerText = btn.dataset.baseText || "버튼";
+          btn.classList.remove('disabled');
+          clearInterval(interval);
+        } else {
+          btn.innerText = `쿨 ${remaining.toFixed(1)}`;
+        }
+      }, 100);
+    }
+
+    [atkBtn1, atkBtn2].forEach(btn => btn.dataset.baseText = "공격");
+    [rangedBtn1, rangedBtn2].forEach(btn => btn.dataset.baseText = "원거리");
+    [ultiBtn1, ultiBtn2].forEach(btn => btn.dataset.baseText = "궁극기");
+    [counterBtn1, counterBtn2].forEach(btn => btn.dataset.baseText = "반격");
+
+    function showParticle(target) {
+      const rect = target.getBoundingClientRect();
+      const particle = document.createElement('div');
+      particle.className = 'particle';
+      particle.style.left = rect.left + rect.width / 2 - 10 + 'px';
+      particle.style.top = rect.top + rect.height / 2 - 10 + 'px';
+      document.body.appendChild(particle);
+      setTimeout(() => document.body.removeChild(particle), 400);
+    }
+
+    function endRound(winner) {
+      isFighting = false;
+      if (winner === 'p1') wins1++;
+      else wins2++;
+      updateUI();
+
+      if (wins1 === 2 || wins2 === 2) {
+        setTimeout(() => {
+          alert(`🎉 ${winner === 'p1' ? '플레이어 1' : '플레이어 2'} 최종 승리!`);
+          resetGame();
+        }, 1000);
+      } else {
+        setTimeout(() => {
+          round++;
+          resetRound();
+        }, 1500);
+      }
+    }
+
+    function resetRound() {
+      hp1 = 150;
+      hp2 = 150;
+      isFighting = true;
+      state.p1.x = 100;
+      state.p2.x = window.innerWidth - 150;
+      state.p1.y = groundY;
+      state.p2.y = groundY;
+      state.p1.vy = 0;
+      state.p2.vy = 0;
+      state.p1.jumpCount = 0;
+      state.p2.jumpCount = 0;
+      state.p1.isGround = true;
+      state.p2.isGround = true;
+      state.p1.moveDir = 0;
+      state.p2.moveDir = 0;
+      counterState.p1 = false;
+      counterState.p2 = false;
+      [atkBtn1, atkBtn2, rangedBtn1, rangedBtn2, ultiBtn1, ultiBtn2, counterBtn1, counterBtn2].forEach(btn => {
+        btn.classList.remove('disabled');
+        btn.innerText = btn.dataset.baseText;
+      });
+      updateUI();
+    }
+
+    function resetGame() {
+      wins1 = 0;
+      wins2 = 0;
+      round = 1;
+      resetRound();
+    }
+
+    function gameLoop() {
+      [state.p1, state.p2].forEach(s => {
+        if (s.moveDir !== 0) {
+          s.x += s.moveDir * moveSpeed;
+          if (s.x < minX) s.x = minX;
+          if (s.x > maxX) s.x = maxX;
+        }
+        if (!s.isGround || s.vy > 0) {
+          s.vy -= gravity;
+          s.y += s.vy;
+          if (s.y <= groundY) {
+            s.y = groundY;
+            s.vy = 0;
+            s.isGround = true;
+            s.jumpCount = 0;
+          }
+        }
+      });
+      updateUI();
+      requestAnimationFrame(gameLoop);
+    }
+
+    resetRound();
+    gameLoop();
+  </script>
+</body>
+</html>
